@@ -114,6 +114,7 @@ nodes:
   # Contained work and finishing an open pull request: the in-loop builder.
   - id: build
     command: loop-work
+    model: medium
     context: fresh
     idle_timeout: 2700000
     depends_on: [claim]
