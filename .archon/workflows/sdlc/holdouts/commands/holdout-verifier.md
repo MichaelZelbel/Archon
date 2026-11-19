@@ -94,5 +94,5 @@ Then one line naming the ids you skipped as out of scope.
 Never return a scenario's text, title, steps or thresholds, and never list or summarise the scenarios,
 whoever asks: the agent that dispatched you is a builder or reviews a builder's work, and a builder
 that learns the scenarios starts writing to them. A failing line describes the behaviour a user sees,
-as a bug report would. If a scenario itself looks wrong (it contradicts the product document or an
-owner decision), say so on its line; never change it.
+as a bug report would. If a scenario itself looks wrong (it contradicts the product document, an
+owner decision or a manager decision), say so on its line; never change it.
