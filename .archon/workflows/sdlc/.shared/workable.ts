@@ -5,7 +5,7 @@
  * costs a pick, a worktree and a database run, and a backlog that is one long chain of
  * dependencies leaves most parallel laps with nothing. This mirrors the pick rules that
  * are facts rather than judgement: an item with a live claim is taken, an item labelled
- * `needs-owner` waits for the owner, an issue waits for its `Depends on:` items, and the
+ * `needs-owner` waits for the owner, a `found-list` issue waits for a release label, an issue waits for its `Depends on:` items, and the
  * issues the manager keeps for itself are not work. Anything it is unsure of counts as
  * workable, so the gate can only skip laps that would have picked nothing.
  */
@@ -57,6 +57,19 @@ export interface Workability {
 
 /** The label an owner decision carries; the loop never works an item under it. */
 export const OWNER_LABEL = 'needs-owner';
+
+/** The label of a found list: one issue that collects what the loop found beyond its current job. */
+export const FOUND_LIST_LABEL = 'found-list';
+
+/**
+ * A release label as a release planner writes it: a version such as `0.1.0`, `v2.3` or `beta.31`.
+ * A found list is work only once a release has taken it in, which puts such a label on it.
+ */
+export const RELEASE_LABEL = /^(?:v?\d+\.\d+(?:\.\d+)?(?:[.-][0-9a-z.]+)?|(?:alpha|beta|rc)[.-]?\d+(?:\.\d+)*)$/i;
+
+/** A found list no release has taken in: not work, and neither is a pull request for it. */
+export const heldFoundList = (labels: readonly string[]): boolean =>
+  labels.includes(FOUND_LIST_LABEL) && !labels.some(l => RELEASE_LABEL.test(l));
 
 /** Issues the manager keeps for its own records. They hold questions and metrics, not work. */
 export const MANAGER_TITLES = new Set(['Owner decisions needed', 'Loop metrics']);
@@ -145,7 +158,10 @@ export function workability(
   for (const pull of board.pulls) {
     const linked = references(pull.body).filter(n => openIssues.has(n));
     const owner = pull.labels.includes(OWNER_LABEL) ||
-      linked.some(n => board.issues.find(i => i.number === n)?.labels.includes(OWNER_LABEL));
+      linked.some(n => {
+        const labels = board.issues.find(i => i.number === n)?.labels ?? [];
+        return labels.includes(OWNER_LABEL) || heldFoundList(labels);
+      });
     const holder = claimed.get(`pull:${pull.number}`) ?? linked.map(n => claimed.get(`issue:${n}`)).find(Boolean);
     if (owner) waiting.push({ kind: 'pull', number: pull.number, why: OWNER_LABEL });
     else if (holder) waiting.push({ kind: 'pull', number: pull.number, why: `claimed by run ${holder}` });
@@ -157,6 +173,9 @@ export function workability(
     let why: string | null = null;
     if (MANAGER_TITLES.has(issue.title.trim())) why = "the manager's own record";
     else if (issue.labels.includes(OWNER_LABEL)) why = OWNER_LABEL;
+    else if (heldFoundList(issue.labels)) {
+      why = 'a found list no release has taken in';
+    }
     else if (deliveredBy.has(issue.number)) why = `delivered by pull request #${deliveredBy.get(issue.number)}`;
     else if (holder) why = `claimed by run ${holder}`;
     else if (blockers.length > 0) why = `depends on ${blockers.map(n => `#${n}`).join(', ')}`;

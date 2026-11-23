@@ -20,6 +20,41 @@ const claim = (run: string, h = 1): BoardItem['comments'][number] => ({
 });
 
 describe('loop launch gate', () => {
+  it('a found list is not work until a release label is on it', () => {
+    const result = workability(
+      {
+        issues: [
+          item(1, { labels: ['bug', 'found-list'] }),
+          item(2, { labels: ['bug', 'found-list', 'beta.31'] }),
+          item(3, { labels: ['found-list', '0.1.0'] }),
+          item(4, { labels: ['bug', 'found-list', 'needs-owner', 'beta.31'] }),
+        ],
+        pulls: [],
+      },
+      6,
+      now
+    );
+    expect(result.workable).toEqual([
+      { kind: 'issue', number: 2 },
+      { kind: 'issue', number: 3 },
+    ]);
+    expect(result.waiting.find(w => w.number === 1)?.why).toBe('a found list no release has taken in');
+    expect(result.waiting.find(w => w.number === 4)?.why).toBe('needs-owner');
+  });
+
+  it('a pull request for a found list no release has taken in is not work either', () => {
+    const result = workability(
+      {
+        issues: [item(1, { labels: ['found-list'] }), item(2, { labels: ['found-list', '0.1.0'] })],
+        pulls: [item(10, { body: 'Closes #1' }), item(11, { body: 'Closes #2' })],
+      },
+      6,
+      now
+    );
+    expect(result.workable.filter(w => w.kind === 'pull')).toEqual([{ kind: 'pull', number: 11 }]);
+    expect(result.waiting.find(w => w.kind === 'pull' && w.number === 10)?.why).toBe('needs-owner');
+  });
+
   it('reads Depends on lines and closing keywords the way pick does', () => {
     expect(dependencies('Intro\nDepends on: #3, #5\n- **Depends on:** #9')).toEqual([3, 5, 9]);
     expect(dependencies('This depends on nothing; see #4')).toEqual([]);

@@ -66,8 +66,10 @@ in your output as `{line, action, file, issue, reason}`, where `line` is the id 
 
 - `blocks`: it is this change's to fix. You send the change back.
 - `rechecked`: you checked it yourself and the app check was wrong. `file` is the absolute path of the file in `$ARTIFACTS_DIR` where you saved what you ran and saw, written now. Only a run you finished and observed counts: a claim quoted from the pull request or the builder, or a run you stopped early, is not a re-check; send it back or leave the line failing instead.
-- `pre-existing`: for a holdout or defect line only (never a criterion of this work item, which this change must meet), the default branch has the same failure, which you showed. `file` is your default-branch run, saved now; `issue` is the open issue that tracks the failure (`#<number>`, an existing one or one you open now; never a pull request or a closed issue).
-- `issue`: a `QUESTION` worth doing later, or a failure the app check already proved pre-existing, with `issue` the open issue that tracks it (existing, or one you open now with what a user sees, never quoting a holdout).
+- `pre-existing`: for a holdout or defect line only (never a criterion of this work item, which this change must meet), the default branch has the same failure, which you showed. `file` is your default-branch run, saved now; `issue` is the open issue that tracks the failure (`#<number>`, never a pull request or a closed issue): an issue that already tracks it, or else the found list, below.
+- `issue`: a `QUESTION` worth doing later, or a failure the app check already proved pre-existing, with `issue` the open issue that tracks it: an issue that already tracks it, or else the found list, below. Something a user sees but this change did not cause is never filed as an issue of its own.
+
+**The found list.** Everything you find beyond this change's own job (an `issue` or `pre-existing` line, a defect the default branch already has, a `QUESTION` worth doing later) goes into the **found list**: the newest open issue labelled `found-list` that still has `needs-owner`, no release label (a version such as `beta.31` or `0.1.0`) and fewer than 6 comments starting `Found:`. A line is one comment on that issue (`gh issue comment <n> --body-file <file>`; never edit the issue body, so parallel runs cannot overwrite each other), starting `Found:`, then what a user sees and where, then the pull request or run it came from. If there is no such issue, open one titled "Found by the factory (list)" with the labels `bug`, `needs-owner` and `found-list` and a body that says: "Every comment below starting `Found:` is one item of this list. Fix them all in one pull request.", then add your line as its first comment (two lists opened by parallel runs do no harm: each is one item of a release). After commenting, read the issue again: when it now carries a release label or no longer has `needs-owner`, a release took it in while you wrote, so add the same line to another found list (a few lines over 6 are harmless). Never put a holdout scenario's text, steps or thresholds in a line. Do not open an issue of its own for it; name that list's `#<number>` as the line's `issue`. A defect this change itself causes is not for the list: it is `blocks`, and you send the change back.
 - `accepted`: only for a `QUESTION` you judge is not a defect and a user would not notice, or that the work item, the product document, an owner decision or a `Manager decision` already settles. `reason` says why, in a sentence a reader can check against them. Something a user sees and could take for a fault goes to an `issue` instead.
 
 A holdout line is re-checked, or shown pre-existing, only through the `holdout-verifier` agent: never
@@ -85,8 +87,8 @@ file, or send the change back for another check.
 Never overrule a FAIL on opinion: only your own recorded evidence stands in for an app-check line.
 
 **Merge** when every one of these holds: every contract criterion passed or you rechecked it; every
-holdout scenario passed, or fails the same way on the default branch and an issue tracks it; every
-defect is pre-existing with an issue, or you showed it is not one; every question is decided; you found no real bug,
+holdout scenario passed, or fails the same way on the default branch and an issue tracks it (the found list counts); every
+defect is pre-existing with an issue (the found list counts), or you showed it is not one; every question is decided; you found no real bug,
 regression, weakened test, unapproved change to a check, or scope creep that matters; no protected
 file changed; the project's checks pass on the commit you name.
 
@@ -103,7 +105,7 @@ Holdout scenarios are private: describe a holdout failure as the behaviour a use
 
 ## Always
 
-Leave exactly one comment on the pull request (or the work item, when there is no pull request) starting `Loop review:` followed by your decision (`merging`, `sent back`, `needs owner`, `approved`) and `(route: $INPUTS.route)`, then the reason, the evidence, and the disposition of every line above. Every run, whatever you decide. When the app check listed things it `noticed` (not caused by this change), copy them under a heading `Noticed (not this change's)`: they need no disposition, and the manager decides what to file. The merge gate adds its own line when it merges or refuses.
+Leave exactly one comment on the pull request (or the work item, when there is no pull request) starting `Loop review:` followed by your decision (`merging`, `sent back`, `needs owner`, `approved`) and `(route: $INPUTS.route)`, then the reason, the evidence, and the disposition of every line above. Every run, whatever you decide. When the app check listed things it `noticed` (not caused by this change), copy them under a heading `Noticed (not this change's)`: they need no disposition, and the manager puts what is worth keeping on the found list, so you do not. The merge gate adds its own line when it merges or refuses.
 
 ## Never
 
