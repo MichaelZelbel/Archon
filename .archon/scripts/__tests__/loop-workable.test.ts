@@ -165,3 +165,45 @@ describe('loop launch gate', () => {
     expect(free.workable).toEqual([{ kind: 'pull', number: 28 }]);
   });
 });
+
+describe('the one next item, chosen in code', () => {
+  const tickets = (n: number): BoardItem => item(n, { labels: ['bug', 'priority', 'beta.32'] });
+  it("an approved release's open ticket comes before every other item, lowest number first", () => {
+    const result = workability({ issues: [item(5), tickets(616), item(1), tickets(609)], pulls: [] }, 6, now);
+    expect(result.next).toMatchObject({ kind: 'issue', number: 609 });
+  });
+  it('a pull request of a priority ticket comes before starting a priority ticket and before any other pull request', () => {
+    const result = workability(
+      {
+        issues: [item(2), tickets(609), tickets(616)],
+        pulls: [item(11, { body: 'Closes #2' }), item(12, { body: 'Refs #616' })],
+      },
+      6,
+      now
+    );
+    expect(result.next).toMatchObject({ kind: 'pull', number: 12, issue: 616 });
+  });
+  it('a claimed, parked or waiting ticket is not handed over; a closed dependency is no reason to wait', () => {
+    const result = workability(
+      {
+        issues: [
+          tickets(609),
+          { ...tickets(610), comments: [claim('r1')] },
+          item(611, { labels: ['priority', 'needs-owner'] }),
+          { ...tickets(612), body: 'Depends on: #700' },
+          { ...tickets(613), body: 'Depends on: #670' },
+          item(700),
+        ],
+        pulls: [],
+      },
+      6,
+      now
+    );
+    expect(result.next).toMatchObject({ kind: 'issue', number: 609 });
+    const without = workability({ issues: [{ ...tickets(610), comments: [claim('r1')] }, { ...tickets(613), body: 'Depends on: #670' }], pulls: [] }, 6, now);
+    expect(without.next).toMatchObject({ kind: 'issue', number: 613 }); // #670 is not open: nothing to wait for
+  });
+  it('with no priority ticket nothing is handed over and the pick step decides', () => {
+    expect(workability({ issues: [item(1), item(2)], pulls: [item(3, { body: 'Closes #1' })] }, 6, now).next).toBeNull();
+  });
+});

@@ -66,13 +66,34 @@ inputs:
       (it died). Longer than the longest lap; a run that ends releases its claim.
 
 nodes:
+  # The ONE next item, chosen in code (a priority ticket's pull request, else the lowest open priority ticket), and handed to
+  # pick; empty when there is none, and pick's own rules choose.
+  - id: next
+    script: next
+    runtime: bun
+    with:
+      claim_hours: "$INPUTS.claim_hours"
+    output_format:
+      type: object
+      properties:
+        item: { type: string }
+        target: { type: string }
+        pr: { type: string }
+        why: { type: string }
+      required: [item, target, pr, why]
+
   # Choose one move and how to build it. `none` is a real route, so every later
   # `when:` can read this node's fields: it always runs.
   - id: pick
     command: loop-pick
     context: fresh
     idle_timeout: 2700000
+    depends_on: [next]
     with:
+      next_item: "$next.output.item"
+      next_target: "$next.output.target"
+      next_pr: "$next.output.pr"
+      next_why: "$next.output.why"
       runtime: "$INPUTS.runtime"
       attempts: "$INPUTS.attempts"
       rejections: "$INPUTS.rejections"

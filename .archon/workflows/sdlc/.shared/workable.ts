@@ -47,13 +47,30 @@ export interface EndedClaim extends LiveClaim {
   readonly url: string;
 }
 
+/** The ONE item a lap works next, chosen in code (see `nextItem`), or null when the pick step's own rules decide. */
+export interface NextItem {
+  readonly kind: 'issue' | 'pull';
+  readonly number: number;
+  /** For a pull request: the issue it is the work for (the lowest one), when it names one. */
+  readonly issue?: number;
+  readonly why: string;
+}
+
 export interface Workability {
+  /** The one next item: a priority pull request, else a priority issue, else null. */
+  readonly next: NextItem | null;
   readonly workable: WorkableItem[];
   readonly claims: LiveClaim[];
   /** Claims whose run the scheduler knows has ended: dead now, and the caller releases them. */
   readonly ended: EndedClaim[];
   readonly waiting: { readonly kind: 'issue' | 'pull'; readonly number: number; readonly why: string }[];
 }
+
+/**
+ * The label an approved release's tickets carry (the Forge files them with it), and the owner's "before everything else":
+ * work under it goes first, so a release is never left waiting because the factory works on other things.
+ */
+export const PRIORITY_LABEL = 'priority';
 
 /** The label an owner decision carries; the loop never works an item under it. */
 export const OWNER_LABEL = 'needs-owner';
@@ -114,6 +131,46 @@ export function liveClaimComments(
     found.push({ run: comment.body.slice(CLAIM_PREFIX.length).split(/\s/, 1)[0] ?? '', comment });
   }
   return found;
+}
+
+/**
+ * The ONE next item, decided in code and handed to the lap's pick step as an input, in a fixed order:
+ *   1. a workable pull request that is the work for a `priority` issue (or is itself labelled `priority`), lowest issue first;
+ *   2. a workable `priority` issue, lowest number first;
+ *   3. nothing: the pick step's own rules decide, for everything else.
+ * `workable` is what `workability` found workable: an item with a live claim, under `needs-owner`, waiting on an open
+ * dependency (a closed one is no reason to wait) or already delivered by a pull request is not in it.
+ */
+export function nextItem(board: Board, workable: readonly WorkableItem[]): NextItem | null {
+  const labelsOfIssue = (n: number): readonly string[] => board.issues.find(i => i.number === n)?.labels ?? [];
+  const pulls: { number: number; issue: number | undefined; order: number }[] = [];
+  for (const w of workable) {
+    if (w.kind !== 'pull') continue;
+    const pull = board.pulls.find(p => p.number === w.number);
+    if (pull === undefined) continue;
+    const linked = references(pull.body).filter(n => board.issues.some(i => i.number === n));
+    const prioritised = linked.filter(n => labelsOfIssue(n).includes(PRIORITY_LABEL));
+    if (!pull.labels.includes(PRIORITY_LABEL) && prioritised.length === 0) continue;
+    const issue = (prioritised.length > 0 ? prioritised : linked).sort((a, b) => a - b)[0];
+    pulls.push({ number: pull.number, issue, order: issue ?? pull.number });
+  }
+  if (pulls.length > 0) {
+    const first = pulls.sort((a, b) => a.order - b.order || a.number - b.number)[0];
+    return {
+      kind: 'pull',
+      number: first.number,
+      ...(first.issue === undefined ? {} : { issue: first.issue }),
+      why: `a pull request of a priority ticket${first.issue === undefined ? '' : ` (#${first.issue})`} that needs continuing comes before everything else`,
+    };
+  }
+  const issues = workable
+    .filter(w => w.kind === 'issue' && labelsOfIssue(w.number).includes(PRIORITY_LABEL))
+    .map(w => w.number)
+    .sort((a, b) => a - b);
+  if (issues.length > 0) {
+    return { kind: 'issue', number: issues[0], why: `the lowest open priority ticket (#${issues[0]}) comes before everything else` };
+  }
+  return null;
 }
 
 /**
@@ -182,5 +239,5 @@ export function workability(
     if (why === null) workable.push({ kind: 'issue', number: issue.number });
     else waiting.push({ kind: 'issue', number: issue.number, why });
   }
-  return { workable, claims, ended, waiting };
+  return { next: nextItem(board, workable), workable, claims, ended, waiting };
 }

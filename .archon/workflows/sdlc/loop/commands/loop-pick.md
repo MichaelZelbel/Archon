@@ -28,18 +28,39 @@ or until it is more than $INPUTS.claim_hours hours old.
   line or a section to (a README, a changelog, a docs index, a list of checks) and a shared module
   the two changes touch in different places do not count: the default branch merges in cleanly. When every
   actionable item is claimed or overlaps a claimed area, the route is `none`.
-- A pull request still open from an earlier run whose claim was released is ordinary work for rule 1.
+- A pull request still open from an earlier run whose claim was released is ordinary work for rules 1 and 3.
 
 After you choose, the loop claims the item for you; if another run claimed it in the same
 moment, the oldest claim keeps it and this run does nothing. You never write claim comments
 yourself.
 
+## The next item (decided in code)
+
+Before you started, a program chose the next item from the board in a fixed order: a pull request of an approved release's
+ticket (a ticket labelled `priority`) that needs continuing, else the lowest open `priority` ticket. It says:
+
+- Item: $INPUTS.next_item
+- Target: $INPUTS.next_target
+- Pull request: $INPUTS.next_pr
+- Why: $INPUTS.next_why
+
+When the item is not empty, work exactly that item: route `continue` when there is a pull request, otherwise `simple` or
+`complex` as under "Route" below; `target` and `pr` as given. Do not choose anything else instead. You may refuse it only when
+it cannot be worked, and then you record why: return route `none` with a `reason` that starts `Refused:` and names the cause
+(for example a claim posted since, `needs-owner` raised since, a dependency that is still open, work already delivered), and leave
+one comment on the item starting `Loop refused:` with the same cause. A refusal is the only thing you may do instead of working
+the item; the release clock counts it as no progress. When the item is empty, choose by the rules below.
+
 ## Choose (finish before you start)
 
-1. **Continue** an open pull request this loop owns (its branch starts with `archon/`, or it carries this loop's comments) that has review findings not yet addressed, red CI, a merge conflict, is a draft, is approved but unmerged, or whose latest `Loop review:` says `not merged` (the merge gate refused it). A ready pull request with nothing outstanding and no review since its last commit is also `continue`: the builder will leave it alone and the reviewers will take it.
-2. Otherwise **start** an open issue labeled `priority` whose dependencies are closed, lowest number first: the owner marked it to go before everything else. If there is none, start the open issue whose dependencies are closed that unblocks the most other open work (count the issues whose `Depends on` chains run through it), then the lowest number, unless the product document's build order says otherwise. Work the product needs comes before follow-ups the loop filed about its own tooling, unless one of them blocks product work. Never start an issue that already has an open pull request (search `gh pr list --search "<issue number>"` and the issue's linked pull requests): continue that pull request instead, or skip it if it is not this loop's.
-3. Skip anything labeled `needs-owner`.
-4. Skip every issue labeled `found-list` unless it also carries a release label (a version such as `beta.31` or `0.1.0`): a found list is what the loop collected for a later release, never work to start on its own. Never remove `needs-owner` from one, and never count it as bookkeeping to resolve.
+Work the owner marked `priority` goes before everything else, and an approved release's tickets are filed with that label, so a release never waits behind other work. Take the first rule that has a candidate:
+
+1. **Continue a priority pull request.** An open pull request this loop owns (its branch starts with `archon/`, or it carries this loop's comments) whose work item carries the label `priority`, and that has review findings not yet addressed, red CI, a merge conflict, is a draft, is approved but unmerged, or whose latest `Loop review:` says `not merged` (the merge gate refused it). A ready pull request with nothing outstanding and no review since its last commit is also `continue`: the builder will leave it alone and the reviewers will take it. Lowest issue number first.
+2. **Start a priority issue.** Start an open issue labeled `priority` whose dependencies are closed (a dependency that is closed is no reason to wait), lowest number first: the owner marked it to go before everything else, including the unfinished pull requests of work that is not priority. Never start an issue that already has an open pull request (search `gh pr list --search "<issue number>"` and the issue's linked pull requests): that is rule 1, or skip it if the pull request is not this loop's.
+3. **Continue any other pull request** this loop owns, with the same conditions as rule 1.
+4. Otherwise **start** the open issue whose dependencies are closed that unblocks the most other open work (count the issues whose `Depends on` chains run through it), then the lowest number, unless the product document's build order says otherwise. Work the product needs comes before follow-ups the loop filed about its own tooling, unless one of them blocks product work. Never start an issue that already has an open pull request (as in rule 2): continue that pull request instead, or skip it if it is not this loop's.
+
+Whichever rule picks, skip anything labeled `needs-owner`, and skip every issue labeled `found-list` unless it also carries a release label (a version such as `beta.31` or `0.1.0`): a found list is what the loop collected for a later release, never work to start on its own. Never remove `needs-owner` from one, and never count it as bookkeeping to resolve.
 
 **Bookkeeping is not an owner decision.** `needs-owner` is for what only the owner, or Mission Control on his standing instruction, can decide: product direction, scope, look and feel, contradictory requirements, or an item that hit the caps below. A technical matter is not the owner's: a comment headed `Manager decision (Mission Control, not Michael)` on the item settles it, and when such a decision is newer than the park, the item is workable again as that decision says. A product, scope, look-and-feel or product-behaviour question is settled the same way by a comment headed `Manager decision (Mission Control, on Michael's standing instruction` (any date follows) on the item, or on the `Owner decisions needed` issue where it names the item or its question, which Mission Control writes on Michael's standing instruction; it settles the question exactly as an `Owner decision` would, and when it is newer than the park the item is workable again as it says. It never settles money (spending, or raising a spend limit or subscription), publishing, going live, posting publicly or sending to anyone but the owner, or irreversibly deleting people's data or accounts: those need an `Owner decision` in the owner's own words, and the park stays until there is one. An item the manager carried on past a reversible question (no `needs-owner`, a comment naming the default assumed) is workable as it stands. Resolve bookkeeping yourself instead: close an open issue that a merged pull request already delivered (link the pull request and the review that confirmed its criteria; if part is missing, say what and leave it open), and close an exact duplicate pointing at the original. If an open `needs-owner` item is really bookkeeping like this, or its park no longer holds under these rules (for example it was held only for a failure the default branch already has and the change did not cause), and other work waits on it, resolve it the same way and remove the label, saying why. Never lift a park that asks the owner a product question unless an `Owner decision` or a `Manager decision (Mission Control, on Michael's standing instruction` newer than the park answers it.
 
@@ -49,7 +70,7 @@ yourself.
 
 Decide how the chosen work should be built.
 
-- `continue`: finishing an open pull request (rule 1). The builder handles it.
+- `continue`: finishing an open pull request (rule 1 or 3). The builder handles it.
 - `simple`: a contained change. The acceptance criteria are clear, it touches a few files in an area the codebase already shows how to do, and it involves no authentication, security, data model or migration, and no refactor across modules.
 - `complex`: anything else: changes across many modules, authentication, security, data or migrations, conventions to honour across the codebase, a design decision to make first, or the label `route:ship`. Also complex: an item a `simple` attempt already failed on. Escalation is one way; never route an item back to simple.
 
