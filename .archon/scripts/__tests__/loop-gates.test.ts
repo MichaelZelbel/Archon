@@ -348,6 +348,16 @@ describe('loop wiring', () => {
     expect(pick).toContain('an open issue labeled `priority`');
     expect(pick).toContain('asked for no code change (only the record, the evidence, or merging the default branch) is `light`');
     expect(pick).not.toContain('lowest number first unless');
+    // priority work goes first: its pull request, then its issue, then any other pull request, then the rest
+    const order = ['**Continue a priority pull request.**', '**Start a priority issue.**', '**Continue any other pull request**', 'Otherwise **start** the open issue'].map(t => pick.indexOf(t));
+    expect(order.every(i => i >= 0)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+    // the next item is chosen in code and handed to pick, which may only refuse it with a recorded reason
+    expect(pick).toContain('$INPUTS.next_item');
+    expect(pick).toContain('`Refused:`');
+    const loop = readFileSync(resolve(pack, 'loop/archon-loop.yaml'), 'utf8');
+    expect(loop).toContain('script: next');
+    expect(loop).toContain('depends_on: [next]');
   });
 
   it('the merge goes through the gate: review decides, land merges, deploy follows land', () => {

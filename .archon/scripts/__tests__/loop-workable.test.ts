@@ -165,3 +165,81 @@ describe('loop launch gate', () => {
     expect(free.workable).toEqual([{ kind: 'pull', number: 28 }]);
   });
 });
+
+describe('the one next item, chosen in code', () => {
+  const tickets = (n: number): BoardItem => item(n, { labels: ['bug', 'priority', 'beta.32'] });
+  it("an approved release's open ticket comes before every other item, lowest number first", () => {
+    const result = workability({ issues: [item(5), tickets(616), item(1), tickets(609)], pulls: [] }, 6, now);
+    expect(result.next).toMatchObject({ kind: 'issue', number: 609 });
+  });
+  it('a pull request of a priority ticket comes before starting a priority ticket and before any other pull request', () => {
+    const result = workability(
+      {
+        issues: [item(2), tickets(609), tickets(616)],
+        pulls: [item(11, { body: 'Closes #2', headRef: 'archon/two' }), item(12, { body: 'Refs #616', headRef: 'archon/616' })],
+      },
+      6,
+      now
+    );
+    expect(result.next).toMatchObject({ kind: 'pull', number: 12, issue: 616 });
+  });
+  it('a claimed, parked or waiting ticket is not handed over; a closed dependency is no reason to wait', () => {
+    const result = workability(
+      {
+        issues: [
+          tickets(609),
+          { ...tickets(610), comments: [claim('r1')] },
+          item(611, { labels: ['priority', 'needs-owner'] }),
+          { ...tickets(612), body: 'Depends on: #700' },
+          { ...tickets(613), body: 'Depends on: #670' },
+          item(700),
+        ],
+        pulls: [],
+      },
+      6,
+      now
+    );
+    expect(result.next).toMatchObject({ kind: 'issue', number: 609 });
+    const without = workability({ issues: [{ ...tickets(610), comments: [claim('r1')] }, { ...tickets(613), body: 'Depends on: #670' }], pulls: [] }, 6, now);
+    expect(without.next).toMatchObject({ kind: 'issue', number: 613 }); // #670 is not open: nothing to wait for
+  });
+  it('with no priority ticket nothing is handed over and the pick step decides', () => {
+    expect(workability({ issues: [item(1), item(2)], pulls: [item(3, { body: 'Closes #1' })] }, 6, now).next).toBeNull();
+  });
+  it('a pull request this loop does not own, or one of a ticket that is not priority, is never handed over', () => {
+    const result = workability(
+      {
+        issues: [item(2), tickets(609), tickets(616)],
+        pulls: [
+          item(10, { body: 'Refs #609', headRef: 'someone/else' }), // a contributor's: not this loop's
+          item(11, { body: 'Closes #2', headRef: 'archon/two', labels: ['priority'] }), // its own label proves nothing
+        ],
+      },
+      6,
+      now
+    );
+    // #609 is the contributor's pull request's work (the gate's own rule), so the next item is the one behind it
+    expect(result.next).toMatchObject({ kind: 'issue', number: 616 });
+  });
+  it('an item the pick step refused in the last hour is left out, so one refusal never starves the tickets behind it', () => {
+    const refusal = { body: 'Loop refused: a dependency is still open', createdAt: hoursAgo(0.5) };
+    const result = workability({ issues: [{ ...tickets(609), comments: [refusal] }, tickets(616)], pulls: [] }, 6, now);
+    expect(result.next).toMatchObject({ kind: 'issue', number: 616 });
+    const old = workability({ issues: [{ ...tickets(609), comments: [{ ...refusal, createdAt: hoursAgo(3) }] }, tickets(616)], pulls: [] }, 6, now);
+    expect(old.next).toMatchObject({ kind: 'issue', number: 609 });
+  });
+  it("a pull request that carries this loop's comments is its own, whatever its branch is called", () => {
+    const review = { body: 'Loop review: sent back (route: simple)', createdAt: hoursAgo(2) };
+    const result = workability({ issues: [tickets(616)], pulls: [item(12, { body: 'Refs #616', headRef: 'fix-616', comments: [review] })] }, 6, now);
+    expect(result.next).toMatchObject({ kind: 'pull', number: 12, issue: 616 });
+  });
+  it('a pull request of several priority tickets is not handed over through one that was refused', () => {
+    const refusal = { body: 'Loop refused: a dependency is still open', createdAt: hoursAgo(0.5) };
+    const result = workability(
+      { issues: [{ ...tickets(609), comments: [refusal] }, tickets(616)], pulls: [item(12, { body: 'Refs #609, Refs #616', headRef: 'archon/both' })] },
+      6,
+      now
+    );
+    expect(result.next).toMatchObject({ kind: 'pull', number: 12, issue: 616 });
+  });
+});
