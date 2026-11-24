@@ -233,4 +233,13 @@ describe('the one next item, chosen in code', () => {
     const result = workability({ issues: [tickets(616)], pulls: [item(12, { body: 'Refs #616', headRef: 'fix-616', comments: [review] })] }, 6, now);
     expect(result.next).toMatchObject({ kind: 'pull', number: 12, issue: 616 });
   });
+  it('a pull request of several priority tickets is not handed over through one that was refused', () => {
+    const refusal = { body: 'Loop refused: a dependency is still open', createdAt: hoursAgo(0.5) };
+    const result = workability(
+      { issues: [{ ...tickets(609), comments: [refusal] }, tickets(616)], pulls: [item(12, { body: 'Refs #609, Refs #616', headRef: 'archon/both' })] },
+      6,
+      now
+    );
+    expect(result.next).toMatchObject({ kind: 'pull', number: 12, issue: 616 });
+  });
 });

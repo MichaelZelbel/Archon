@@ -166,8 +166,9 @@ export function nextItem(board: Board, workable: readonly WorkableItem[], now = 
     const linked = references(pull.body).filter(n => board.issues.some(i => i.number === n));
     const prioritised = linked.filter(n => labelsOfIssue(n).includes(PRIORITY_LABEL));
     if (prioritised.length === 0) continue; // only a pull request of a priority ticket: its own label proves nothing
-    if (prioritised.every(n => refused(board.issues.find(i => i.number === n)))) continue;
-    const issue = prioritised.sort((a, b) => a - b)[0];
+    const open = prioritised.filter(n => !refused(board.issues.find(i => i.number === n))); // a refused ticket is not handed over through its pull request either
+    if (open.length === 0) continue;
+    const issue = open.sort((a, b) => a - b)[0];
     pulls.push({ number: pull.number, issue, order: issue ?? pull.number });
   }
   if (pulls.length > 0) {

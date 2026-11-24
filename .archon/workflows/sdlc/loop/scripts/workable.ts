@@ -35,6 +35,7 @@ function items(raw: unknown): BoardItem[] {
     number: Number(row.number),
     title: str(row.title),
     body: str(row.body),
+    ...(typeof row.headRefName === 'string' ? { headRef: row.headRefName } : {}),
     labels: Array.isArray(row.labels)
       ? row.labels.map((label: { name?: unknown }) => str(label.name))
       : [],
@@ -50,7 +51,7 @@ function items(raw: unknown): BoardItem[] {
 
 const fields = 'number,title,body,labels,comments,updatedAt';
 const rawIssues = gh(['issue', 'list', '--state', 'open', '--limit', '200', '--json', fields]);
-const rawPulls = gh(['pr', 'list', '--state', 'open', '--limit', '100', '--json', fields]);
+const rawPulls = gh(['pr', 'list', '--state', 'open', '--limit', '100', '--json', `${fields},headRefName`]);
 const board = { issues: items(rawIssues), pulls: items(rawPulls) };
 // The newest change to any open item (a comment, a label): an answer that lifts a park leaves
 // the same items workable, and the scheduler must still see the board as changed.
