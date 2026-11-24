@@ -25,6 +25,8 @@ export interface BoardItem {
   readonly body: string;
   readonly labels: readonly string[];
   readonly comments: readonly BoardComment[];
+  /** A pull request's branch, when the caller read it: this loop's own pull requests start with `archon/`. */
+  readonly headRef?: string;
 }
 
 export interface Board {
@@ -71,6 +73,13 @@ export interface Workability {
  * work under it goes first, so a release is never left waiting because the factory works on other things.
  */
 export const PRIORITY_LABEL = 'priority';
+
+/** How long a refused item is left out of the next-item choice, so one refusal never starves the tickets behind it. */
+export const REFUSAL_COOLDOWN_HOURS = 1;
+
+/** A pull request this loop owns (pick's rule 1): its branch starts with `archon/`, or it carries this loop's comments. */
+export const loopOwns = (pull: BoardItem): boolean =>
+  (pull.headRef ?? '').startsWith('archon/') || pull.comments.some(c => /^Loop (?:claim|review|refused)\b/.test(c.body));
 
 /** The label an owner decision carries; the loop never works an item under it. */
 export const OWNER_LABEL = 'needs-owner';
@@ -135,23 +144,30 @@ export function liveClaimComments(
 
 /**
  * The ONE next item, decided in code and handed to the lap's pick step as an input, in a fixed order:
- *   1. a workable pull request that is the work for a `priority` issue (or is itself labelled `priority`), lowest issue first;
+ *   1. a workable pull request this loop owns that is the work for a `priority` issue, lowest issue first;
  *   2. a workable `priority` issue, lowest number first;
  *   3. nothing: the pick step's own rules decide, for everything else.
+ * An item the pick step refused in the last hour (`Loop refused:`) is left out, so one refusal never starves the rest.
  * `workable` is what `workability` found workable: an item with a live claim, under `needs-owner`, waiting on an open
  * dependency (a closed one is no reason to wait) or already delivered by a pull request is not in it.
  */
-export function nextItem(board: Board, workable: readonly WorkableItem[]): NextItem | null {
+export function nextItem(board: Board, workable: readonly WorkableItem[], now = Date.now()): NextItem | null {
+  const refused = (item: BoardItem | undefined): boolean =>
+    (item?.comments ?? []).some(c => {
+      const at = Date.parse(c.createdAt);
+      return c.body.startsWith('Loop refused:') && !Number.isNaN(at) && now - at < REFUSAL_COOLDOWN_HOURS * 3_600_000;
+    });
   const labelsOfIssue = (n: number): readonly string[] => board.issues.find(i => i.number === n)?.labels ?? [];
   const pulls: { number: number; issue: number | undefined; order: number }[] = [];
   for (const w of workable) {
     if (w.kind !== 'pull') continue;
     const pull = board.pulls.find(p => p.number === w.number);
-    if (pull === undefined) continue;
+    if (pull === undefined || !loopOwns(pull) || refused(pull)) continue;
     const linked = references(pull.body).filter(n => board.issues.some(i => i.number === n));
     const prioritised = linked.filter(n => labelsOfIssue(n).includes(PRIORITY_LABEL));
-    if (!pull.labels.includes(PRIORITY_LABEL) && prioritised.length === 0) continue;
-    const issue = (prioritised.length > 0 ? prioritised : linked).sort((a, b) => a - b)[0];
+    if (prioritised.length === 0) continue; // only a pull request of a priority ticket: its own label proves nothing
+    if (prioritised.every(n => refused(board.issues.find(i => i.number === n)))) continue;
+    const issue = prioritised.sort((a, b) => a - b)[0];
     pulls.push({ number: pull.number, issue, order: issue ?? pull.number });
   }
   if (pulls.length > 0) {
@@ -164,7 +180,7 @@ export function nextItem(board: Board, workable: readonly WorkableItem[]): NextI
     };
   }
   const issues = workable
-    .filter(w => w.kind === 'issue' && labelsOfIssue(w.number).includes(PRIORITY_LABEL))
+    .filter(w => w.kind === 'issue' && labelsOfIssue(w.number).includes(PRIORITY_LABEL) && !refused(board.issues.find(i => i.number === w.number)))
     .map(w => w.number)
     .sort((a, b) => a - b);
   if (issues.length > 0) {
@@ -239,5 +255,5 @@ export function workability(
     if (why === null) workable.push({ kind: 'issue', number: issue.number });
     else waiting.push({ kind: 'issue', number: issue.number, why });
   }
-  return { next: nextItem(board, workable), workable, claims, ended, waiting };
+  return { next: nextItem(board, workable, now), workable, claims, ended, waiting };
 }

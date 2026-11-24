@@ -31,6 +31,7 @@ function items(raw: unknown): BoardItem[] {
     number: Number(row.number),
     title: str(row.title),
     body: str(row.body),
+    ...(typeof row.headRefName === 'string' ? { headRef: row.headRefName } : {}),
     labels: Array.isArray(row.labels) ? row.labels.map((label: { name?: unknown }) => str(label.name)) : [],
     comments: Array.isArray(row.comments)
       ? row.comments.map((comment: { body?: unknown; createdAt?: unknown; url?: unknown }) => ({
@@ -43,9 +44,10 @@ function items(raw: unknown): BoardItem[] {
 }
 
 const fields = 'number,title,body,labels,comments';
+const pullFields = `${fields},headRefName`;
 const board = {
   issues: items(gh(['issue', 'list', '--state', 'open', '--limit', '200', '--json', fields])),
-  pulls: items(gh(['pr', 'list', '--state', 'open', '--limit', '100', '--json', fields])),
+  pulls: items(gh(['pr', 'list', '--state', 'open', '--limit', '100', '--json', pullFields])),
 };
 const found = workability(board, expiryHours(trimmed(process.env.INPUTS_CLAIM_HOURS)), Date.now());
 const next = found.next;
